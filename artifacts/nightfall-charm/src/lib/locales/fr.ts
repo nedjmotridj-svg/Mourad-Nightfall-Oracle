@@ -112,6 +112,7 @@ export const fr = {
     execPrisoner: "Exécuter le prisonnier",
     healSave: "Sauver {name}",
     poisonPotion: "Potion de mort (optionnel)",
+    witchTargetProtected: "Le Salvateur protège déjà cette victime — la potion de vie est inutile.",
 
     // Aube & débat
     debateTitle: "Débat — Jour {n}",
@@ -131,6 +132,7 @@ export const fr = {
     pause: "Pause",
     resume: "Reprendre",
     endDebate: "Fin du débat",
+    extend30: "+30 s",
 
     // Vote
     voteTitle: "Vote du village — Jour {n}",
@@ -144,6 +146,7 @@ export const fr = {
     removeVote: "Retirer une voix à {name}",
     bavardCheck: "Vérification — Loup Bavard",
     bavardAsk: "A-t-il prononcé son mot {word} ?",
+    bavardInactiveDay1: "Le Loup Bavard était inactif la nuit 1 — pas de vérification.",
     tieJudge:
       "Égalité : le Juge arbitre. Il désigne un ou plusieurs ex æquo à éliminer, ou ordonne un revote.",
     judgeExecute: "Exécuter la sentence du Juge",
@@ -170,6 +173,23 @@ export const fr = {
     tapToContinue: "Toucher pour continuer",
     nightSubtitle: "Nuit {n} — que tout le monde ferme les yeux",
     daySubtitle: "Jour {n} — le village se réveille",
+
+    // Bilan de Partie
+    bilanTitle: "Bilan de Partie",
+    bilanMvp: "⭐ MVP de la partie",
+    bilanMvpScore: "{n} pts",
+    bilanVoteHistory: "Historique des votes",
+    bilanDayVote: "Jour {n}",
+    bilanRevoteSuffix: " (revote)",
+    bilanElim: "→ {names}",
+    bilanNobodyElim: "→ Personne",
+    bilanTeamDomination: "Domination stratégique",
+    bilanVillageCtrl: "🏘️ Village : {pct}%",
+    bilanWolfCtrl: "🐺 Loups : {pct}%",
+    bilanBalanced: "Partie très équilibrée",
+    bilanDuration: "{d} jour(s) de partie",
+    bilanSurvivors: "Survivants : {n}",
+    bilanNoVotes: "Aucun vote n'a été enregistré.",
 
     // Fin
     gameOver: "Fin de la partie",

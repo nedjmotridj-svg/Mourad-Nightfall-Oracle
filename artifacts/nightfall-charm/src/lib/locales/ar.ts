@@ -103,6 +103,7 @@ export const ar: Dictionary = {
     execPrisoner: "إعدام السجين",
     healSave: "إنقاذ {name}",
     poisonPotion: "جرعة الموت (اختياري)",
+    witchTargetProtected: "الحامي يحمي هذه الضحية بالفعل — جرعة الشفاء غير ضرورية.",
 
     debateTitle: "النقاش — اليوم {n}",
     debateText: "يفتتح القائد النقاش، يتكلم كل لاعب، ثم يختم القائد.",
@@ -120,6 +121,7 @@ export const ar: Dictionary = {
     pause: "إيقاف",
     resume: "استئناف",
     endDebate: "إنهاء النقاش",
+    extend30: "+٣٠ ث",
 
     voteTitle: "تصويت القرية — اليوم {n}",
     revoteSuffix: " (إعادة تصويت)",
@@ -131,6 +133,7 @@ export const ar: Dictionary = {
     removeVote: "سحب صوت من {name}",
     bavardCheck: "تحقق — الذئب الثرثار",
     bavardAsk: "هل نطق كلمته {word}؟",
+    bavardInactiveDay1: "الذئب الثرثار كان غير نشط في الليلة الأولى — لا حاجة للتحقق.",
     tieJudge:
       "تعادل: القاضي يحكم. يختار واحدًا أو أكثر من المتعادلين للإقصاء، أو يأمر بإعادة التصويت.",
     judgeExecute: "تنفيذ حكم القاضي",
@@ -154,6 +157,22 @@ export const ar: Dictionary = {
     tapToContinue: "المس للمتابعة",
     nightSubtitle: "الليلة {n} — ليغمض الجميع أعينهم",
     daySubtitle: "اليوم {n} — تستيقظ القرية",
+
+    bilanTitle: "ملخص اللعبة",
+    bilanMvp: "⭐ أفضل لاعب",
+    bilanMvpScore: "{n} نقطة",
+    bilanVoteHistory: "سجل التصويتات",
+    bilanDayVote: "اليوم {n}",
+    bilanRevoteSuffix: " (إعادة تصويت)",
+    bilanElim: "← {names}",
+    bilanNobodyElim: "← لا أحد",
+    bilanTeamDomination: "الهيمنة الاستراتيجية",
+    bilanVillageCtrl: "🏘️ القرية: {pct}٪",
+    bilanWolfCtrl: "🐺 الذئاب: {pct}٪",
+    bilanBalanced: "لعبة متوازنة جدًا",
+    bilanDuration: "{d} يوم من اللعب",
+    bilanSurvivors: "الناجون: {n}",
+    bilanNoVotes: "لم يتم تسجيل بيانات تصويت.",
 
     gameOver: "انتهت اللعبة",
     gameOverFallback: "انتهت اللعبة.",
@@ -265,7 +284,7 @@ export const ar: Dictionary = {
       name: "كيوبيد",
       description: "ينسج رابطًا قاتلًا بين قلبين فيصبح مصيرهما واحدًا.",
       power:
-        "الليلة الأولى: يربط لاعبَين. من معسكرين مختلفين → معسكر العاشقَين. إن مات أحدهما مات الآخر حزنًا.",
+        "الليلة الأولى: يربط لاعبَين. من معسكرَين مختلفَين → معسكر العاشقَين. إن مات أحدهما مات الآخر حزنًا.",
     },
     ancien: {
       name: "الشيخ",

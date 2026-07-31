@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Crown, Pencil, Skull, X } from "lucide-react";
+import { Crown, Pencil, Skull, Trophy, X } from "lucide-react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { MuteButton } from "@/components/MuteButton";
 import { ROLE_BY_ID, TEAM_LABEL, roleImage } from "@/data/roles";
@@ -9,6 +9,7 @@ import { PhaseTransition } from "@/components/PhaseTransition";
 import { SpeakButton } from "@/components/SpeakButton";
 import { DebateQueue } from "@/components/DebateQueue";
 import { EliminationReveal } from "@/components/EliminationReveal";
+import { useI18n } from "@/lib/i18n";
 import {
   clearBgm,
   playCheer,
@@ -57,8 +58,38 @@ export const Route = createFileRoute("/game")({
   component: GamePage,
 });
 
+/** One round of village voting recorded for post-game analytics. */
+interface VoteRecord {
+  day: number;
+  votes: { id: string; name: string; count: number }[];
+  eliminated: { id: string; name: string; roleId: string; team: string }[];
+  isRevote: boolean;
+}
+
+/** Score-based MVP: survival > captain > winning-team alignment. */
+function computeMvp(
+  players: Player[],
+  winnerTeam?: string,
+): { player: Player; score: number } {
+  const results = players.map((p) => {
+    let score = 0;
+    if (p.alive) score += 5;
+    if (p.isCaptain) score += 2;
+    const isWolf = p.team === "WEREWOLVES" || !!p.isConvertedToWolf;
+    const wins =
+      (winnerTeam === "WOLVES" && isWolf) ||
+      (winnerTeam === "VILLAGE" && !isWolf && p.team === "VILLAGEOIS") ||
+      (winnerTeam === "LOVERS" && p.team === "LOVERS") ||
+      (winnerTeam === "PIPER" && effectiveRoleId(p) === "joueur-de-flute");
+    if (wins) score += 3;
+    return { player: p, score };
+  });
+  return results.sort((a, b) => b.score - a.score)[0]!;
+}
+
 function GamePage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [state, setState] = useState<GameState | null>(null);
   const [settings, setSettings] = useState<GameSettings | null>(null);
   const [transition, setTransition] = useState<"NIGHT" | "DAY" | null>("NIGHT");
@@ -66,6 +97,7 @@ function GamePage() {
     { id: string; name: string; roleId: string }[] | null
   >(null);
   const [debateDoneDay, setDebateDoneDay] = useState(0);
+  const [voteHistory, setVoteHistory] = useState<VoteRecord[]>([]);
   const lastPhase = useRef<string>("");
 
   useEffect(() => {
@@ -81,7 +113,7 @@ function GamePage() {
     else navigate({ to: "/setup" });
   }, [navigate]);
 
-  // Cartes de transition nuit/jour
+  // Phase transition cards
   useEffect(() => {
     if (!state) return;
     const isNight = state.phase.startsWith("NUIT");
@@ -93,7 +125,7 @@ function GamePage() {
     lastPhase.current = key;
   }, [state]);
 
-  // Sons de fin de partie
+  // End-of-game SFX
   useEffect(() => {
     if (state?.phase !== "FIN") return;
     if (state.winnerTeam === "WOLVES") playWolfHowl();
@@ -104,51 +136,46 @@ function GamePage() {
     if (state) saveGame(state);
   }, [state]);
 
-  // ── BGM lifecycle ─────────────────────────────────────────────────
+  // BGM lifecycle
   useEffect(() => {
     if (!state) return;
-    if (state.phase === "FIN") {
-      clearBgm(); // Fade to silence on game over
-      return;
-    }
+    if (state.phase === "FIN") { clearBgm(); return; }
     startBgm(state.phase.startsWith("NUIT") ? "NIGHT" : "DAY");
   }, [state?.phase]);
 
-  // Always stop BGM when leaving the game screen.
   useEffect(() => () => clearBgm(), []);
 
-  if (!state) return <main className="p-8 text-muted-foreground">Chargement…</main>;
+  if (!state)
+    return <main className="p-8 text-muted-foreground">{t("loading")}</main>;
 
   if (state.phase === "FIN")
     return (
       <GameOver
         state={state}
-        onRestart={() => {
-          clearGame();
-          navigate({ to: "/" });
-        }}
+        voteHistory={voteHistory}
+        onRestart={() => { clearGame(); navigate({ to: "/" }); }}
       />
     );
+
+  const isNight = state.phase.startsWith("NUIT");
+  const phaseLabel = isNight
+    ? t("nightN", { n: state.night })
+    : t("dayN", { n: state.day });
 
   return (
     <main className="mx-auto max-w-lg space-y-5 px-4 py-6 pb-16">
       <header className="sticky top-0 z-40 -mx-4 flex items-center justify-between gap-2 bg-background/80 px-4 py-2 backdrop-blur">
         <span className="text-xs tracking-widest text-muted-foreground uppercase">
-          {state.phase.startsWith("NUIT")
-            ? `Nuit ${state.night}`
-            : `Jour ${state.day}`}
+          {phaseLabel}
         </span>
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
           <MuteButton />
           <button
-            onClick={() => {
-              clearGame();
-              navigate({ to: "/" });
-            }}
+            onClick={() => { clearGame(); navigate({ to: "/" }); }}
             className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-primary"
           >
-            Quitter
+            {t("quit")}
           </button>
         </div>
       </header>
@@ -158,8 +185,8 @@ function GamePage() {
           kind={transition}
           subtitle={
             transition === "NIGHT"
-              ? `Nuit ${state.night} — que tout le monde ferme les yeux`
-              : `Jour ${state.day} — le village se réveille`
+              ? t("nightSubtitle", { n: state.night })
+              : t("daySubtitle", { n: state.day })
           }
           onDone={() => setTransition(null)}
         />
@@ -190,6 +217,7 @@ function GamePage() {
       ) : state.phase === "JOUR_VOTE" ? (
         <VotePanel
           state={state}
+          onVoteRecord={(r) => setVoteHistory((h) => [...h, r])}
           onChange={(next) => {
             if (next.lastEliminated?.length) setVictims(next.lastEliminated);
             setState(next);
@@ -201,13 +229,15 @@ function GamePage() {
 
       <section className="surface-card rounded-2xl p-4">
         <h2 className="mb-2 text-xs tracking-widest text-primary uppercase">
-          Village ({state.players.filter((p) => p.alive).length} vivants)
+          {t("village", { n: state.players.filter((p) => p.alive).length })}
         </h2>
         <RoleList players={state.players} revealAll />
       </section>
     </main>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function Overlay({
   children,
@@ -216,6 +246,7 @@ function Overlay({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-6 backdrop-blur">
       <div className="surface-card animate-rise-in neon-ring max-w-sm space-y-5 rounded-3xl p-6 text-center">
@@ -224,7 +255,7 @@ function Overlay({
           onClick={onClose}
           className="w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
         >
-          Continuer
+          {t("continue")}
         </button>
       </div>
     </div>
@@ -238,6 +269,7 @@ function RoleList({
   players: Player[];
   revealAll?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <ul className="grid grid-cols-2 gap-2 text-sm">
       {players.map((p) => (
@@ -248,21 +280,21 @@ function RoleList({
           <span className="flex items-center gap-1 font-semibold">
             {p.name}
             {p.isCaptain && p.alive && (
-              <Crown className="size-3.5 text-accent" aria-label="Capitaine" />
+              <Crown className="size-3.5 text-accent" aria-label={t("captain")} />
             )}
             {p.isConvertedToWolf && (
               <span
-                title="Converti en Loup (info meneur)"
+                title={t("convertedInfo")}
                 className="rounded bg-destructive/20 px-1 text-[9px] font-bold text-destructive uppercase"
               >
-                Loup
+                {t("wolfTag")}
               </span>
             )}
           </span>
           {(revealAll || !p.alive) && (
             <span className="block text-[11px] text-muted-foreground">
               {ROLE_BY_ID[p.originalRoleId ?? effectiveRoleId(p)]?.name}
-              {p.isConvertedToWolf && " (converti)"}
+              {p.isConvertedToWolf && t("converted")}
             </span>
           )}
         </li>
@@ -280,6 +312,7 @@ function PlayerPicker({
   selected: string[];
   onToggle: (id: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="grid grid-cols-2 gap-2">
       {players.map((p) => (
@@ -294,7 +327,7 @@ function PlayerPicker({
         >
           {p.isCaptain && (
             <span
-              aria-label="Capitaine"
+              aria-label={t("captain")}
               className="absolute -top-2 -right-2 grid size-6 place-items-center rounded-full bg-accent text-accent-foreground shadow-lg"
             >
               <Crown className="size-3.5" />
@@ -307,6 +340,8 @@ function PlayerPicker({
   );
 }
 
+// ─── Night panel ──────────────────────────────────────────────────────────────
+
 function NightPanel({
   state,
   onChange,
@@ -314,6 +349,7 @@ function NightPanel({
   state: GameState;
   onChange: (s: GameState) => void;
 }) {
+  const { t, prompt } = useI18n();
   const step = currentStep(state);
   const [sel, setSel] = useState<string[]>([]);
   const [execute, setExecute] = useState(false);
@@ -333,28 +369,22 @@ function NightPanel({
     setWordDraft("");
   }, [step?.key]);
 
-  // Wolf-pack SFX: howl whenever a wolf role wakes up
+  // Wolf-pack SFX
   useEffect(() => {
     if (!step) return;
-    const WOLF_ROLES = [
-      "loup-garou",
-      "loup-noir",
-      "loup-blanc",
-      "loup-matriarche",
-      "loup-bavard",
-    ];
+    const WOLF_ROLES = ["loup-garou", "loup-noir", "loup-blanc", "loup-matriarche", "loup-bavard"];
     if (WOLF_ROLES.includes(step.roleId)) playWolfHowl();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step?.key]);
 
   if (!step) {
     return (
-      <NarratorCard text="La nuit s'achève sur le village endormi.">
+      <NarratorCard text={t("nightEnds")}>
         <button
           onClick={() => onChange(submitStep(state, {}))}
           className="w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
         >
-          Lever le jour
+          {t("raiseDay")}
         </button>
       </NarratorCard>
     );
@@ -363,9 +393,7 @@ function NightPanel({
   const actor = state.players.find((p) => p.id === step.actorId)!;
   let candidates = state.players.filter((p) => p.alive);
   if (step.roleId === "loup-blanc")
-    candidates = candidates.filter(
-      (p) => p.team === "WEREWOLVES" && p.id !== actor.id,
-    );
+    candidates = candidates.filter((p) => p.team === "WEREWOLVES" && p.id !== actor.id);
   if (step.roleId === "salvateur")
     candidates = candidates.filter((p) => p.id !== state.round.previousProtectedId);
   if (["voyante", "cupidon", "mime", "enfant-sauvage", "general"].includes(step.roleId))
@@ -391,6 +419,16 @@ function NightPanel({
       !p.powersDisabled,
   );
 
+  // Salvateur + Sorcière interaction: if salvateur already protects the attacked player,
+  // the witch's heal potion is unnecessary.
+  const isAttackedPlayerSaved =
+    step.mode === "witch" &&
+    state.round.attackedId != null &&
+    state.round.attackedId === state.round.protectedId;
+
+  const attackedPlayerName = state.players.find((p) => p.id === state.round.attackedId)?.name;
+
+  const stepPrompt = prompt(step.roleId) || step.prompt;
 
   return (
     <div className="surface-card animate-rise-in neon-ring overflow-hidden rounded-3xl">
@@ -414,15 +452,14 @@ function NightPanel({
 
       <div className="space-y-4 p-5">
         <p className="text-sm text-muted-foreground">
-          {actor.name} — {step.prompt}
+          {actor.name} — {stepPrompt}
         </p>
 
         {step.mode === "word" ? (
           <div className="space-y-4">
-            {/* Big reveal card — MJ holds up screen for the Loup Bavard */}
             <div className="neon-ring relative overflow-hidden rounded-3xl border-2 border-primary bg-black/60 p-6 text-center">
               <p className="text-[11px] tracking-[0.3em] text-primary uppercase">
-                Mot secret imposé
+                {t("secretWordTitle")}
               </p>
               {editingWord ? (
                 <div className="mt-3 flex items-center gap-2">
@@ -442,9 +479,8 @@ function NightPanel({
                   />
                   <button
                     onClick={() => {
-                      if (wordDraft.trim()) {
+                      if (wordDraft.trim())
                         onChange({ ...state, round: { ...state.round, requiredWord: wordDraft.trim() } });
-                      }
                       setEditingWord(false);
                     }}
                     className="shrink-0 rounded-full bg-primary px-4 py-3 text-sm font-bold text-primary-foreground"
@@ -469,7 +505,7 @@ function NightPanel({
                       setWordDraft(state.round.requiredWord ?? "");
                       setEditingWord(true);
                     }}
-                    aria-label="Modifier le mot"
+                    aria-label={t("editWord")}
                     className="shrink-0 rounded-full border border-primary/40 p-2 text-primary/60 transition hover:border-primary hover:text-primary"
                   >
                     <Pencil className="size-4" />
@@ -481,7 +517,7 @@ function NightPanel({
               onClick={() => send({})}
               className="neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
             >
-              Le Loup Bavard a vu son mot
+              {t("bavardSeen")}
             </button>
           </div>
         ) : step.mode === "wolves" ? (
@@ -492,14 +528,14 @@ function NightPanel({
               onClick={() => send({ targetId: sel[0] })}
               className="w-full rounded-full bg-primary py-3 font-bold text-primary-foreground disabled:opacity-40"
             >
-              La meute est d'accord
+              {t("packAgrees")}
             </button>
             {matriarch && (
               <button
                 onClick={() => send({ disagreement: true })}
                 className="w-full rounded-full border border-primary py-3 text-sm font-bold text-primary"
               >
-                Désaccord — la Matriarche tranche
+                {t("disagreement")}
               </button>
             )}
           </div>
@@ -512,63 +548,60 @@ function NightPanel({
                   checked={infect}
                   onChange={(e) => setInfect(e.target.checked)}
                 />
-                Contaminer{" "}
-                {state.players.find((p) => p.id === state.round.attackedId)?.name}{" "}
-                (1× par partie)
+                {t("infectPlayer", {
+                  name: state.players.find((p) => p.id === state.round.attackedId)?.name ?? "",
+                })}
               </label>
             )}
             {state.night >= 2 ? (
               <>
                 <p className="text-xs tracking-widest text-primary uppercase">
-                  Imposer le silence (optionnel)
+                  {t("muteTitle")}
                 </p>
                 <PlayerPicker
                   players={candidates.filter(
-                    (p) =>
-                      p.id !== actor.id && p.id !== state.round.previousMutedId,
+                    (p) => p.id !== actor.id && p.id !== state.round.previousMutedId,
                   )}
                   selected={mute ? [mute] : []}
                   onToggle={(id) => setMute((m) => (m === id ? null : id))}
                 />
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Le pouvoir de silence est disponible à partir de la nuit 2.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("muteUnavailable")}</p>
             )}
             <button
               onClick={() => send({ yes: infect, muteId: mute ?? undefined })}
               className="w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
             >
-              Valider
+              {t("validate")}
             </button>
           </div>
         ) : step.mode === "bear" ? (
           <>
             <div className="space-y-1 rounded-2xl border border-border p-3 text-sm">
               <p className="text-[11px] tracking-widest text-primary uppercase">
-                Voisins directs (info Maître du Jeu)
+                {t("bearNeighbors")}
               </p>
               {(() => {
                 const { left, right } = bearNeighbors(state, actor.id);
                 return [left, right].map((n, idx) =>
                   n ? (
                     <p key={idx} className="text-muted-foreground">
-                      {idx === 0 ? "Gauche" : "Droite"} :{" "}
+                      {idx === 0 ? t("left") : t("right")} :{" "}
                       <span className="font-semibold text-foreground">{n.name}</span>{" "}
                       — {ROLE_BY_ID[n.originalRoleId ?? effectiveRoleId(n)]?.name}
-                      {n.isConvertedToWolf && " (infecté)"}
+                      {n.isConvertedToWolf && t("infected")}
                     </p>
                   ) : null,
                 );
               })()}
             </div>
             <button
-            onClick={() => send({})}
-            className="neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
-          >
-            L'ours renifle les voisins
-          </button>
+              onClick={() => send({})}
+              className="neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
+            >
+              {t("bearSniff")}
+            </button>
           </>
         ) : step.mode === "yesno" ? (
           <div className="flex gap-3">
@@ -576,41 +609,47 @@ function NightPanel({
               onClick={() => send({ yes: true })}
               className="flex-1 rounded-full bg-primary py-3 font-bold text-primary-foreground"
             >
-              Oui
+              {t("yes")}
             </button>
             <button
               onClick={() => send({ yes: false })}
               className="flex-1 rounded-full border border-border py-3 font-semibold"
             >
-              Non
+              {t("no")}
             </button>
           </div>
         ) : step.mode === "witch" ? (
           <div className="space-y-3">
-            {state.round.attackedId && !actor.healUsed && (
-              <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={heal}
-                  onChange={(e) => setHeal(e.target.checked)}
-                />
-                Sauver{" "}
-                {state.players.find((p) => p.id === state.round.attackedId)?.name}
-              </label>
+            {isAttackedPlayerSaved ? (
+              /* Salvateur already saved the victim — hide heal potion */
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                🛡️ {t("witchTargetProtected")}
+              </div>
+            ) : (
+              state.round.attackedId && !actor.healUsed && (
+                <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={heal}
+                    onChange={(e) => setHeal(e.target.checked)}
+                  />
+                  {t("healSave", { name: attackedPlayerName ?? "" })}
+                </label>
+              )
             )}
             {!actor.poisonUsed && (
               <>
                 <p className="text-xs tracking-widest text-primary uppercase">
-                  Potion de mort (optionnel)
+                  {t("poisonPotion")}
                 </p>
                 <PlayerPicker players={candidates} selected={sel} onToggle={toggle} />
               </>
             )}
             <button
-              onClick={() => send({ healUsed: heal, poisonId: sel[0] })}
+              onClick={() => send({ healUsed: isAttackedPlayerSaved ? false : heal, poisonId: sel[0] })}
               className="w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
             >
-              Valider
+              {t("validate")}
             </button>
           </div>
         ) : (
@@ -623,25 +662,23 @@ function NightPanel({
                   checked={execute}
                   onChange={(e) => setExecute(e.target.checked)}
                 />
-                Exécuter le prisonnier
+                {t("execPrisoner")}
               </label>
             )}
             <div className="flex gap-3">
               <button
                 disabled={step.mode === "two" ? sel.length !== 2 : sel.length !== 1}
-                onClick={() =>
-                  send({ targetId: sel[0], targetIds: sel, yes: execute })
-                }
+                onClick={() => send({ targetId: sel[0], targetIds: sel, yes: execute })}
                 className="flex-1 rounded-full bg-primary py-3 font-bold text-primary-foreground disabled:opacity-40"
               >
-                Valider
+                {t("validate")}
               </button>
               {step.optional && (
                 <button
                   onClick={() => send({})}
                   className="rounded-full border border-border px-5 py-3 text-sm"
                 >
-                  Passer
+                  {t("skip")}
                 </button>
               )}
             </div>
@@ -651,6 +688,8 @@ function NightPanel({
     </div>
   );
 }
+
+// ─── Dawn panel ───────────────────────────────────────────────────────────────
 
 function DawnPanel({
   state,
@@ -665,23 +704,24 @@ function DawnPanel({
   onDebateDone: () => void;
   onChange: (s: GameState) => void;
 }) {
+  const { t } = useI18n();
   const firstDay = state.day === 1 && !state.voteSkippedOffer;
   const alive = state.players.filter((p) => p.alive);
 
-  // Le débat a lieu chaque jour, avant tout vote (obligatoire le jour 1).
   if (settings?.isDebateTimerEnabled && !debateDone)
     return (
       <NarratorCard
-        title={`Débat — Jour ${state.day}`}
-        text="Le capitaine ouvre les débats, chaque joueur s'exprime, puis le capitaine conclut."
+        title={t("debateTitle", { n: state.day })}
+        text={t("debateText")}
       >
         {alive.some((p) => p.mutedForDay) && (
           <p className="rounded-xl border border-destructive/50 p-3 text-xs text-muted-foreground">
-            Réduit(s) au silence par le Loup Noir :{" "}
-            {alive
-              .filter((p) => p.mutedForDay)
-              .map((p) => p.name)
-              .join(", ")}
+            {t("mutedBy", {
+              names: alive
+                .filter((p) => p.mutedForDay)
+                .map((p) => p.name)
+                .join(", "),
+            })}
           </p>
         )}
         <DebateQueue
@@ -695,33 +735,32 @@ function DawnPanel({
 
   return (
     <NarratorCard
-      title={`Aube — Jour ${state.day}`}
+      title={t("dawnTitle", { n: state.day })}
       text={state.dawnSummary.join(" ")}
     >
       {state.round.requiredWord && (
         <p className="rounded-xl border border-border p-3 text-sm">
-          Loup Bavard, ton mot du jour :{" "}
+          {t("bavardWordOfDay")}{" "}
           <span className="font-bold text-primary">{state.round.requiredWord}</span>
         </p>
       )}
       {firstDay ? (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Villageois, souhaitez-vous procéder au vote dès ce premier jour ? Ce
-            matin seulement, le vote est facultatif.
+            {t("firstDayVoteQuestion")}
           </p>
           <div className="flex gap-3">
             <button
               onClick={() => onChange(goToVote(state))}
               className="flex-1 rounded-full bg-primary py-3 font-bold text-primary-foreground"
             >
-              Voter
+              {t("vote")}
             </button>
             <button
               onClick={() => onChange(skipVote(state))}
               className="flex-1 rounded-full border border-border py-3 font-semibold"
             >
-              Pas de vote
+              {t("noVote")}
             </button>
           </div>
         </div>
@@ -730,20 +769,25 @@ function DawnPanel({
           onClick={() => onChange(goToVote(state))}
           className="neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
         >
-          Le meneur impose le vote du village
+          {t("forceVote")}
         </button>
       )}
     </NarratorCard>
   );
 }
 
+// ─── Vote panel ───────────────────────────────────────────────────────────────
+
 function VotePanel({
   state,
   onChange,
+  onVoteRecord,
 }: {
   state: GameState;
   onChange: (s: GameState) => void;
+  onVoteRecord?: (r: VoteRecord) => void;
 }) {
+  const { t } = useI18n();
   const alive = state.players.filter((p) => p.alive);
   const [votes, setVotes] = useState<Record<string, number>>(() =>
     Object.fromEntries(alive.map((p) => [p.id, p.baseVotes])),
@@ -751,9 +795,13 @@ function VotePanel({
   const [tie, setTie] = useState<string[]>([]);
   const [judgePick, setJudgePick] = useState<string[]>([]);
   const [revoteRound, setRevoteRound] = useState(0);
+
   const talkative = state.players.find(
     (p) => p.alive && effectiveRoleId(p) === "loup-bavard",
   );
+  // Feature 2: hide Loup Bavard word-check on Day 1 (they were inactive Night 1)
+  const showTalkativeCheck = !!talkative && state.day > 1;
+
   const [spoke, setSpoke] = useState(true);
   const judge = state.players.find(
     (p) => p.alive && effectiveRoleId(p) === "juge",
@@ -761,6 +809,19 @@ function VotePanel({
 
   const resetVotes = () =>
     setVotes(Object.fromEntries(alive.map((p) => [p.id, p.baseVotes])));
+
+  /** Build a VoteRecord snapshot from current vote state. */
+  const buildRecord = (eliminatedIds: string[], isRevote: boolean): VoteRecord => ({
+    day: state.day,
+    votes: alive
+      .map((p) => ({ id: p.id, name: p.name, count: votes[p.id] ?? 0 }))
+      .filter((v) => v.count > 0),
+    eliminated: eliminatedIds.map((id) => {
+      const p = state.players.find((x) => x.id === id)!;
+      return { id, name: p.name, roleId: effectiveRoleId(p), team: p.team };
+    }),
+    isRevote,
+  });
 
   const validate = () => {
     const max = Math.max(...Object.values(votes));
@@ -770,13 +831,14 @@ function VotePanel({
     if (top.length === 0) return;
     if (top.length > 1) {
       if (revoteRound >= 1) {
-        // Seconde égalité : tous les ex æquo périssent.
+        // Second tie: eliminate all tied players
         playGavel();
+        onVoteRecord?.(buildRecord(top, true));
         onChange(eliminateTied(state, top, spoke));
         return;
       }
       if (!judge) {
-        // Pas de Juge : revote automatique.
+        // No Judge: automatic revote
         playGavel();
         setRevoteRound(1);
         resetVotes();
@@ -786,23 +848,32 @@ function VotePanel({
       setTie(top);
       return;
     }
+    onVoteRecord?.(buildRecord(top, revoteRound > 0));
     onChange(submitVote(state, top[0], spoke));
   };
 
   const totalVotesCast = Object.values(votes).reduce((a, b) => a + b, 0);
-  const voteLimit = alive.length + 1; // +1 : le Capitaine pèse 2 voix
+  const voteLimit = alive.length + 1;
 
   return (
     <NarratorCard
-      title={`Vote du village — Jour ${state.day}${revoteRound ? " (revote)" : ""}`}
-      text="Le village doit désigner un condamné. Comptez les voix : au moins un joueur doit être éliminé."
+      title={`${t("voteTitle", { n: state.day })}${revoteRound ? t("revoteSuffix") : ""}`}
+      text={t("voteText")}
     >
-      {/* Running vote tally */}
+      {/* Running tally */}
       <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
         <span className="text-xs tracking-widest text-muted-foreground uppercase">
-          Voix distribuées
+          {t("voteTotal", { c: totalVotesCast, t: voteLimit })}
         </span>
-        <span className={`font-black tabular-nums ${totalVotesCast > voteLimit ? "text-destructive" : totalVotesCast === voteLimit ? "text-primary" : "text-foreground"}`}>
+        <span
+          className={`font-black tabular-nums ${
+            totalVotesCast > voteLimit
+              ? "text-destructive"
+              : totalVotesCast === voteLimit
+                ? "text-primary"
+                : "text-foreground"
+          }`}
+        >
           {totalVotesCast} / {voteLimit}
         </span>
       </div>
@@ -816,27 +887,21 @@ function VotePanel({
             <span className="flex flex-wrap items-center gap-x-2">
               {p.name}
               {p.isCaptain && (
-                <Crown className="size-3.5 text-accent" aria-label="Capitaine" />
+                <Crown className="size-3.5 text-accent" aria-label={t("captain")} />
               )}
               {p.voteWeight === 2 && (
-                <span className="text-[10px] text-primary uppercase">
-                  Capitaine ×2
-                </span>
+                <span className="text-[10px] text-primary uppercase">{t("captainX2")}</span>
               )}
               {!p.canVote && (
-                <span className="text-[10px] text-muted-foreground uppercase">
-                  ne vote pas
-                </span>
+                <span className="text-[10px] text-muted-foreground uppercase">{t("cannotVote")}</span>
               )}
               {p.immuneToDayVote && (
-                <span className="text-[10px] text-muted-foreground uppercase">
-                  immunisé
-                </span>
+                <span className="text-[10px] text-muted-foreground uppercase">{t("immune")}</span>
               )}
             </span>
             <span className="flex items-center gap-3">
               <button
-                aria-label={`Retirer une voix à ${p.name}`}
+                aria-label={t("removeVote", { name: p.name })}
                 onClick={() => {
                   playVoteTick();
                   setVotes((v) => ({ ...v, [p.id]: Math.max(0, v[p.id] - 1) }));
@@ -847,7 +912,7 @@ function VotePanel({
               </button>
               <b className="w-5 text-center">{votes[p.id]}</b>
               <button
-                aria-label={`Ajouter une voix à ${p.name}`}
+                aria-label={t("addVote", { name: p.name })}
                 onClick={() => {
                   playVoteTick();
                   setVotes((v) => ({ ...v, [p.id]: v[p.id] + 1 }));
@@ -861,38 +926,43 @@ function VotePanel({
         ))}
       </ul>
 
-      {talkative && (
+      {/* Feature 2: Loup Bavard word check only from Day 2 */}
+      {showTalkativeCheck ? (
         <div className="space-y-2 rounded-xl border border-primary/40 p-3 text-sm">
           <p className="text-[11px] tracking-widest text-primary uppercase">
-            Vérification — Loup Bavard
+            {t("bavardCheck")}
           </p>
           <p>
-            A-t-il prononcé son mot
-            {state.round.requiredWord ? ` « ${state.round.requiredWord} »` : ""} ?
+            {t("bavardAsk", {
+              word: state.round.requiredWord ? `« ${state.round.requiredWord} »` : "—",
+            })}
           </p>
           <div className="flex gap-2">
             <button
               onClick={() => setSpoke(true)}
               className={`flex-1 rounded-full py-2 text-xs font-bold ${spoke ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}
             >
-              Oui
+              {t("yes")}
             </button>
             <button
               onClick={() => setSpoke(false)}
               className={`flex-1 rounded-full py-2 text-xs font-bold ${!spoke ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}
             >
-              Non
+              {t("no")}
             </button>
           </div>
         </div>
-      )}
+      ) : talkative && state.day === 1 ? (
+        /* Day 1: Loup Bavard was inactive night 1, no word to check */
+        <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
+          {t("bavardInactiveDay1")}
+        </div>
+      ) : null}
 
+      {/* Judge tie-breaker or validate button */}
       {tie.length > 1 ? (
         <div className="space-y-3 rounded-2xl border border-primary/40 p-4">
-          <p className="text-sm text-primary">
-            Égalité : le Juge arbitre. Il désigne un ou plusieurs ex æquo à
-            éliminer, ou ordonne un revote.
-          </p>
+          <p className="text-sm text-primary">{t("tieJudge")}</p>
           {tie.map((id) => {
             const picked = judgePick.includes(id);
             return (
@@ -911,16 +981,18 @@ function VotePanel({
           })}
           <button
             disabled={judgePick.length === 0}
-            onClick={() =>
+            onClick={() => {
+              const record = buildRecord(judgePick, revoteRound > 0);
+              onVoteRecord?.(record);
               onChange(
                 judgePick.length === 1
                   ? submitVote(state, judgePick[0], spoke)
                   : eliminateTied(state, judgePick, spoke),
-              )
-            }
+              );
+            }}
             className="neon-ring w-full rounded-full bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-40"
           >
-            Exécuter la sentence du Juge
+            {t("judgeExecute")}
           </button>
           <button
             onClick={() => {
@@ -931,59 +1003,196 @@ function VotePanel({
             }}
             className="w-full rounded-full border border-primary py-3 text-sm font-bold text-primary"
           >
-            Ordonner un revote
+            {t("orderRevote")}
           </button>
-          <p className="text-xs text-muted-foreground">
-            En cas de seconde égalité après revote, tous les ex æquo sont
-            éliminés.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("tieNote")}</p>
         </div>
       ) : (
         <button
           onClick={validate}
           className="neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
         >
-          Valider l'exécution
+          {t("validateExec")}
         </button>
       )}
     </NarratorCard>
   );
 }
 
+// ─── Game over / Bilan de Partie ──────────────────────────────────────────────
+
 function GameOver({
   state,
+  voteHistory,
   onRestart,
 }: {
   state: GameState;
+  voteHistory: VoteRecord[];
   onRestart: () => void;
 }) {
+  const { t } = useI18n();
   const wolves = state.winnerTeam === "WOLVES";
+  const survivors = state.players.filter((p) => p.alive).length;
+  const duration = state.day ?? 1;
+
+  // MVP
+  const { player: mvp, score: mvpScore } = computeMvp(state.players, state.winnerTeam);
+
+  // Strategic domination: did the village mostly execute wolves, or villagers?
+  const allEliminated = voteHistory.flatMap((r) => r.eliminated);
+  const wolfElims = allEliminated.filter(
+    (e) => e.team === "WEREWOLVES",
+  ).length;
+  const villageElims = allEliminated.filter(
+    (e) => e.team !== "WEREWOLVES",
+  ).length;
+  const totalElims = wolfElims + villageElims;
+  const villagePct = totalElims > 0 ? Math.round((wolfElims / totalElims) * 100) : 0;
+  const wolfPct = totalElims > 0 ? Math.round((villageElims / totalElims) * 100) : 0;
+
   return (
-    <main className="mx-auto max-w-lg space-y-5 px-4 py-8">
+    <main className="mx-auto max-w-lg space-y-4 px-4 py-8">
+      {/* ── Winner banner ── */}
       <div
         className={`surface-card animate-rise-in neon-ring space-y-2 rounded-3xl p-6 text-center ${
           wolves ? "border-destructive/50" : ""
         }`}
       >
         <p className="text-5xl">{wolves ? "🐺" : "🎉"}</p>
-        <h1 className="neon-text text-2xl font-black">Fin de la partie</h1>
+        <h1 className="neon-text text-2xl font-black">{t("gameOver")}</h1>
         <p className="text-sm text-muted-foreground">
-          {state.winner ?? "La partie est terminée."}
+          {state.winner ?? t("gameOverFallback")}
         </p>
+        <div className="flex justify-center gap-4 pt-1 text-xs text-muted-foreground">
+          <span>{t("bilanDuration", { d: duration })}</span>
+          <span>·</span>
+          <span>{t("bilanSurvivors", { n: survivors })}</span>
+        </div>
       </div>
 
+      {/* ── MVP card ── */}
+      {mvp && (
+        <div className="surface-card animate-rise-in rounded-3xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Trophy className="size-4 text-gold" />
+            <p className="text-[11px] tracking-[0.3em] text-gold uppercase">{t("bilanMvp")}</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="mvp-shimmer-text text-xl font-black">{mvp.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {ROLE_BY_ID[mvp.originalRoleId ?? effectiveRoleId(mvp)]?.name}
+                {mvp.isCaptain && " · "}
+                {mvp.isCaptain && <span className="text-accent">{t("captain")}</span>}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-black text-gold">
+                {t("bilanMvpScore", { n: mvpScore })}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {mvp.alive ? t("statusAlive") : t("statusDead")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Strategic analytics ── */}
+      {totalElims > 0 && (
+        <div className="surface-card animate-rise-in rounded-3xl p-4 space-y-3">
+          <p className="text-[11px] tracking-[0.3em] text-primary uppercase">
+            {t("bilanTeamDomination")}
+          </p>
+          {/* Village bar: % of wolf-team players correctly eliminated */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">{t("bilanVillageCtrl", { pct: villagePct })}</span>
+              <span className="font-bold text-foreground">{villagePct}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-input">
+              <div
+                className="animate-bar-fill h-full rounded-full bg-primary"
+                style={{ "--bar-w": `${villagePct}%` } as React.CSSProperties}
+              />
+            </div>
+          </div>
+          {/* Wolf bar: % of village-team players incorrectly eliminated */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">{t("bilanWolfCtrl", { pct: wolfPct })}</span>
+              <span className="font-bold text-foreground">{wolfPct}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-input">
+              <div
+                className="animate-bar-fill h-full rounded-full bg-destructive"
+                style={{ "--bar-w": `${wolfPct}%` } as React.CSSProperties}
+              />
+            </div>
+          </div>
+          {villagePct === wolfPct && (
+            <p className="text-xs text-muted-foreground text-center">{t("bilanBalanced")}</p>
+          )}
+        </div>
+      )}
+
+      {/* ── Vote history ── */}
+      <div className="surface-card animate-rise-in rounded-3xl p-4 space-y-3">
+        <p className="text-[11px] tracking-[0.3em] text-primary uppercase">
+          {t("bilanVoteHistory")}
+        </p>
+        {voteHistory.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("bilanNoVotes")}</p>
+        ) : (
+          <div className="space-y-3">
+            {voteHistory.map((record, idx) => {
+              const dayLabel = `${t("bilanDayVote", { n: record.day })}${record.isRevote ? t("bilanRevoteSuffix") : ""}`;
+              const elimNames = record.eliminated.map((e) => e.name).join(", ");
+              const topVotes = [...record.votes].sort((a, b) => b.count - a.count).slice(0, 3);
+              return (
+                <div
+                  key={idx}
+                  className="rounded-2xl border border-border p-3 text-xs space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-foreground">{dayLabel}</span>
+                    <span className={`font-semibold ${record.eliminated.length > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {record.eliminated.length > 0
+                        ? t("bilanElim", { names: elimNames })
+                        : t("bilanNobodyElim")}
+                    </span>
+                  </div>
+                  {/* Top vote recipients */}
+                  {topVotes.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {topVotes.map((v) => (
+                        <span
+                          key={v.id}
+                          className="rounded-full bg-input px-2 py-0.5 text-muted-foreground"
+                        >
+                          {v.name} ×{v.count}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Player recap table ── */}
       <section className="surface-card space-y-3 rounded-3xl p-4">
-        <h2 className="text-xs tracking-[0.3em] text-primary uppercase">
-          Récapitulatif
-        </h2>
+        <h2 className="text-xs tracking-[0.3em] text-primary uppercase">{t("recap")}</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="text-[11px] tracking-widest text-muted-foreground uppercase">
-                <th className="py-2">Joueur</th>
-                <th className="py-2">Rôle</th>
-                <th className="py-2">Camp</th>
-                <th className="py-2">Statut</th>
+                <th className="py-2">{t("colPlayer")}</th>
+                <th className="py-2">{t("colRole")}</th>
+                <th className="py-2">{t("colTeam")}</th>
+                <th className="py-2">{t("colStatus")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1002,10 +1211,10 @@ function GameOver({
                     </td>
                     <td className="py-2">
                       {p.alive ? (
-                        <span className="text-primary">Vivant</span>
+                        <span className="text-primary">{t("statusAlive")}</span>
                       ) : (
                         <span className="flex items-center gap-1 text-destructive">
-                          <Skull className="size-3.5" /> Mort
+                          <Skull className="size-3.5" /> {t("statusDead")}
                         </span>
                       )}
                     </td>
@@ -1021,11 +1230,13 @@ function GameOver({
         onClick={onRestart}
         className="neon-ring w-full rounded-full bg-primary py-4 font-bold text-primary-foreground"
       >
-        Nouvelle partie
+        {t("newGame")}
       </button>
     </main>
   );
 }
+
+// ─── Captain succession ───────────────────────────────────────────────────────
 
 function CaptainSuccessionPanel({
   state,
@@ -1034,13 +1245,14 @@ function CaptainSuccessionPanel({
   state: GameState;
   onDone: (s: GameState) => void;
 }) {
+  const { t } = useI18n();
   const [sel, setSel] = useState<string[]>([]);
   const dead = state.players.find((p) => p.id === state.captainSuccessionPending);
   const candidates = state.players.filter((p) => p.alive);
   return (
     <NarratorCard
-      title="Succession du Capitaine"
-      text={`${dead?.name ?? "Le capitaine"} tombe. Avant de partir, il désigne lui-même son successeur : il n'y a pas de nouveau vote.`}
+      title={t("captainSuccession")}
+      text={t("captainSuccessionText", { name: dead?.name ?? t("captain") })}
     >
       <PlayerPicker
         players={candidates}
@@ -1052,11 +1264,13 @@ function CaptainSuccessionPanel({
         onClick={() => onDone(assignCaptain(state, sel[0]))}
         className="neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground disabled:opacity-40"
       >
-        Transmettre le capitanat
+        {t("transmit")}
       </button>
     </NarratorCard>
   );
 }
+
+// ─── Hunter panel ─────────────────────────────────────────────────────────────
 
 function HunterPanel({
   state,
@@ -1065,14 +1279,15 @@ function HunterPanel({
   state: GameState;
   onDone: (s: GameState) => void;
 }) {
+  const { t } = useI18n();
   const [sel, setSel] = useState<string[]>([]);
   const candidates = state.players.filter(
     (p) => p.alive && p.id !== state.hunterPending,
   );
   return (
     <NarratorCard
-      title="Dernier souffle du Chasseur"
-      text="Le Chasseur s'effondre, mais son fusil parle une dernière fois."
+      title={t("hunterTitle")}
+      text={t("hunterText")}
     >
       <PlayerPicker
         players={candidates}
@@ -1084,7 +1299,7 @@ function HunterPanel({
         onClick={() => onDone(resolveHunter(state, sel[0]))}
         className="w-full rounded-full bg-primary py-3 font-bold text-primary-foreground disabled:opacity-40"
       >
-        Tirer
+        {t("shoot")}
       </button>
     </NarratorCard>
   );

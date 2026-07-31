@@ -39,6 +39,8 @@ function DistributionPage() {
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [captain, setCaptain] = useState<string | undefined>(undefined);
+  // Track whether the 5-second animation cycle is done (reset per reveal)
+  const [revealKey, setRevealKey] = useState(0);
 
   useEffect(() => {
     const s = loadSetup();
@@ -46,7 +48,6 @@ function DistributionPage() {
       navigate({ to: "/setup" });
       return;
     }
-    // Distribution totalement aléatoire : rôles ET ordre de passage mélangés.
     const roles = shuffle(s.players.map((p) => p.roleId));
     const players = shuffle(
       s.players.map((p, i) => ({ name: p.name, roleId: roles[i] })),
@@ -66,6 +67,12 @@ function DistributionPage() {
   const captainCandidates = (setup?.players ?? []).filter(
     (p) => p.roleId !== "general",
   );
+
+  // Reset animation key when a new role is revealed
+  const handleReveal = () => {
+    setRevealed(true);
+    setRevealKey((k) => k + 1);
+  };
 
   if (!setup)
     return <main className="p-8 text-muted-foreground">{t("distributing")}</main>;
@@ -153,22 +160,38 @@ function DistributionPage() {
             {t("passPhoneTo", { name: player!.name })}
           </p>
           <button
-            onClick={() => setRevealed(true)}
+            onClick={handleReveal}
             className="neon-ring w-full rounded-full bg-primary py-4 font-bold text-primary-foreground"
           >
             {t("discoverRole")}
           </button>
         </div>
       ) : (
-        <div className="surface-card animate-rise-in neon-ring overflow-hidden rounded-3xl">
+        /* ── 5-second cinematic role reveal card ───────────────── */
+        <div
+          key={revealKey}
+          className="surface-card animate-role-aura neon-ring overflow-hidden rounded-3xl"
+        >
+          {/* Role artwork with reveal animation */}
           <div className="relative aspect-square overflow-hidden">
             <img
+              key={revealKey}
               src={roleImage(role!.id)}
               alt={tr(role!.id).name}
-              className="animate-slow-zoom h-full w-full object-cover"
+              className="animate-role-card-reveal h-full w-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
+            {/* Neon shimmer overlay that fades after the animation */}
+            <div
+              key={`shimmer-${revealKey}`}
+              className="animate-role-card-reveal pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(ellipse 60% 40% at 50% 40%, oklch(0.589 0.239 359.7 / 30%), transparent 70%)",
+              }}
+            />
           </div>
+
           <div className="space-y-3 p-5">
             <h2 className="text-xl font-black">{tr(role!.id).name}</h2>
             <p className="text-[11px] tracking-widest text-primary uppercase">
@@ -181,12 +204,14 @@ function DistributionPage() {
               <span className="font-bold text-primary">{t("powerLabel")}</span>
               {tr(role!.id).power}
             </p>
+            {/* Button appears with a delay so player sees the animation */}
             <button
+              key={`btn-${revealKey}`}
               onClick={() => {
                 setRevealed(false);
                 setIndex((i) => i + 1);
               }}
-              className="neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
+              className="animate-button-delayed neon-ring w-full rounded-full bg-primary py-3 font-bold text-primary-foreground"
             >
               {t("memorized")}
             </button>

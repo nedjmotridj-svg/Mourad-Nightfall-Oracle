@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Crown, Pause, Play, SkipForward } from "lucide-react";
+import { Crown, Pause, Play, Plus, SkipForward } from "lucide-react";
 import { playTimeUpAlert } from "@/lib/audio";
 import { useI18n } from "@/lib/i18n";
 import type { Player } from "@/game/engine";
@@ -18,13 +18,13 @@ export function DebateQueue({
 }) {
   const { t } = useI18n();
   const captain = players.find((p) => p.id === captainId);
-  const queue: { player: Player; label?: string }[] = captain
+  const queue: { player: Player; label?: string; isClosing?: boolean }[] = captain
     ? [
         { player: captain, label: t("opening") },
         ...players
           .filter((p) => p.id !== captainId)
           .map((player) => ({ player })),
-        { player: captain, label: t("closing") },
+        { player: captain, label: t("closing"), isClosing: true },
       ]
     : players.map((player) => ({ player }));
   const [i, setI] = useState(0);
@@ -47,6 +47,9 @@ export function DebateQueue({
   if (!entry) return null;
   const current = entry.player;
   const pct = Math.max(0, (left / seconds) * 100);
+
+  // +30s extension is offered during the captain's closing turn
+  const showExtend = !!entry.isClosing;
 
   return (
     <div className="space-y-4 rounded-2xl border border-border p-4">
@@ -88,6 +91,18 @@ export function DebateQueue({
           {running ? <Pause className="size-4" /> : <Play className="size-4" />}
           {running ? t("pause") : t("resume")}
         </button>
+
+        {showExtend && (
+          <button
+            onClick={() => setLeft((v) => v + 30)}
+            className="flex items-center justify-center gap-1 rounded-full border border-primary/60 px-3 py-3 text-sm font-bold text-primary"
+            title={t("extend30")}
+          >
+            <Plus className="size-3.5" />
+            {t("extend30")}
+          </button>
+        )}
+
         <button
           onClick={() => (i + 1 < queue.length ? setI(i + 1) : onFinish())}
           className="flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-2 py-3 text-xs font-bold text-primary-foreground"

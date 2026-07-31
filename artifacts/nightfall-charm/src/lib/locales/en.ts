@@ -104,6 +104,7 @@ export const en: Dictionary = {
     execPrisoner: "Execute the prisoner",
     healSave: "Save {name}",
     poisonPotion: "Death potion (optional)",
+    witchTargetProtected: "The Defender already protects this victim — the healing potion is unnecessary.",
 
     debateTitle: "Debate — Day {n}",
     debateText:
@@ -122,6 +123,7 @@ export const en: Dictionary = {
     pause: "Pause",
     resume: "Resume",
     endDebate: "End the debate",
+    extend30: "+30 s",
 
     voteTitle: "Village vote — Day {n}",
     revoteSuffix: " (revote)",
@@ -134,6 +136,7 @@ export const en: Dictionary = {
     removeVote: "Remove a vote from {name}",
     bavardCheck: "Check — Talkative Wolf",
     bavardAsk: "Did they say their word {word}?",
+    bavardInactiveDay1: "The Talkative Wolf was inactive on night 1 — no verification needed.",
     tieJudge:
       "Tie: the Judge arbitrates. They pick one or more tied players to eliminate, or order a revote.",
     judgeExecute: "Carry out the Judge's sentence",
@@ -157,6 +160,22 @@ export const en: Dictionary = {
     tapToContinue: "Tap to continue",
     nightSubtitle: "Night {n} — everyone close your eyes",
     daySubtitle: "Day {n} — the village wakes up",
+
+    bilanTitle: "Game Summary",
+    bilanMvp: "⭐ MVP of the game",
+    bilanMvpScore: "{n} pts",
+    bilanVoteHistory: "Vote history",
+    bilanDayVote: "Day {n}",
+    bilanRevoteSuffix: " (revote)",
+    bilanElim: "→ {names}",
+    bilanNobodyElim: "→ Nobody",
+    bilanTeamDomination: "Strategic domination",
+    bilanVillageCtrl: "🏘️ Village: {pct}%",
+    bilanWolfCtrl: "🐺 Wolves: {pct}%",
+    bilanBalanced: "Very balanced game",
+    bilanDuration: "{d} day(s) played",
+    bilanSurvivors: "Survivors: {n}",
+    bilanNoVotes: "No vote data recorded.",
 
     gameOver: "Game over",
     gameOverFallback: "The game is over.",
