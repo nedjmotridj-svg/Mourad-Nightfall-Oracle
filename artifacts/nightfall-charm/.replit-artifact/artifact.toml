@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Nightfall Oracle"
+version = "1.0.0"
+id = "artifacts/nightfall-charm"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23747
+
+[services.development]
+run = "pnpm --filter @workspace/nightfall-charm run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nightfall-charm", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/nightfall-charm/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23747"
+BASE_PATH = "/"

@@ -1,6 +1,6 @@
-# [Project name]
+# Mourad's Ville Nightfall Oracle
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A digital game master app for the Loup-Garou (Werewolf) board game — 24 illustrated roles, a complete night/day engine, and village voting, in French, English, and Arabic.
 
 ## Run & Operate
 

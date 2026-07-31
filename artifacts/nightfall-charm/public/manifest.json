@@ -1,0 +1,14 @@
+{
+  "name": "Mourad's Ville Nightfall Oracle",
+  "short_name": "Nightfall Oracle",
+  "description": "Meneur de jeu Loup-Garou : 25 rôles illustrés, moteur de nuit et vote du village.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#050208",
+  "theme_color": "#050208",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" }
+  ]
+}
